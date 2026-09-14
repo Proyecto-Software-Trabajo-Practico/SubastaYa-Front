@@ -1,122 +1,80 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+/*
+  Componente raíz de SubastaYa (App.tsx).
+  Configura el proveedor de autenticación y el enrutador SPA.
+*/
 
-function App() {
-  const [count, setCount] = useState(0)
+import React from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { Navbar } from './components/layout/Navbar';
+import { Footer } from './components/layout/Footer';
+import { CatalogPage } from './pages/CatalogPage';
+import { ActivitiesPage } from './pages/ActivitiesPage';
 
+export const App: React.FC = () => {
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <AuthProvider>
+      <BrowserRouter>
+        <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-blue-600 selection:text-white">
+          {/* Cabecera persistente */}
+          <Navbar />
 
-      <div className="ticks"></div>
+          {/* Área dinámica de contenido */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <Routes>
+              <Route path="/" element={<CatalogPage />} />
+              <Route path="/catalogo" element={<CatalogPage />} />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+              {/* Rutas placeholder que conectaremos en las siguientes sesiones */}
+              <Route
+                path="/billetera"
+                element={
+                  <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center max-w-lg mx-auto mt-12">
+                    <h2 className="text-xl font-bold text-white mb-2">Módulo 4: Billetera Virtual</h2>
+                    <p className="text-sm text-slate-400">
+                      Esta sección se conectará mañana con los endpoints de depósitos (<code>POST /api/billeteras/{'{id}'}/depositos</code>) y transacciones del ledger.
+                    </p>
+                  </div>
+                }
+              />
+              <Route
+                path="/publicar"
+                element={
+                  <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center max-w-lg mx-auto mt-12">
+                    <h2 className="text-xl font-bold text-white mb-2">Módulo 2: Publicar Subasta</h2>
+                    <p className="text-sm text-slate-400">
+                      Formulario para dar de alta subastas con validación de precio base, incremento mínimo y fecha de cierre (<code>POST /api/subastas</code>).
+                    </p>
+                  </div>
+                }
+              />
+              <Route path="/actividades" element={<ActivitiesPage />} />
+              <Route
+                path="/subastas/:id"
+                element={
+                  <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center max-w-lg mx-auto mt-12 space-y-3">
+                    <h2 className="text-xl font-bold text-white">Módulo 3: Sala de Subasta en Vivo</h2>
+                    <p className="text-sm text-slate-400">
+                      ¡Acá se abrirá la consola de oferta interactiva con validación de saldo Escrow, estados <i>Liderando / Superado</i> y toasts!
+                    </p>
+                    <button
+                      onClick={() => window.history.back()}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-colors mt-2"
+                    >
+                      ← Volver al Catálogo
+                    </button>
+                  </div>
+                }
+              />
+            </Routes>
+          </main>
+
+          {/* Pie de página persistente */}
+          <Footer />
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+};
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
-}
-
-export default App
+export default App;
