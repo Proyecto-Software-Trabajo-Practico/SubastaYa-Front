@@ -61,11 +61,11 @@ export const ActivitiesPage: React.FC = () => {
           <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl w-fit mx-auto">
             <Package className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-bold text-white">Subastas creadas por {usuarioActual.nombre}</h3>
+          <h3 className="text-lg font-bold text-white">Subastas creadas por {usuarioActual?.nombre || 'Usuario'}</h3>
           <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
             Aquí se listarán las subastas activas y cerradas que publicaste, consumiendo el endpoint{' '}
             <code className="text-blue-300 font-mono text-xs bg-slate-800 px-1.5 py-0.5 rounded">
-              GET /api/subastas?vendedorId={usuarioActual.id}
+              GET /api/subastas?vendedorId={usuarioActual?.id ?? ''}
             </code>.
           </p>
         </div>
@@ -74,7 +74,7 @@ export const ActivitiesPage: React.FC = () => {
           <div className="p-3 bg-purple-500/10 text-purple-400 rounded-xl w-fit mx-auto">
             <History className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-bold text-white">Historial de ofertas de {usuarioActual.nombre}</h3>
+          <h3 className="text-lg font-bold text-white">Historial de ofertas de {usuarioActual?.nombre || 'Usuario'}</h3>
           <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
             Aquí podrás hacer seguimiento de las subastas en las que estás liderando o fuiste superado (*outbid*).
           </p>
