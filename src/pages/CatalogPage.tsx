@@ -60,12 +60,23 @@ export const CatalogPage: React.FC = () => {
   const [cargando, setCargando] = useState<boolean>(true);
   const [cargandoDetalle, setCargandoDetalle] = useState<boolean>(false);
 
+  // Estados para paginación escalable del catálogo (requisito de rendimiento)
+  const [pagina, setPagina] = useState<number>(1);
+  const [totalPaginas, setTotalPaginas] = useState<number>(1);
+  const [totalItems, setTotalItems] = useState<number>(0);
+  const TAMANO_PAGINA = 20;
+
   const [filtros, setFiltros] = useState<FiltrosSubasta>({
     estado: null,
     orden: null,
     categoriaId: null,
     categoriaNombre: null,
   });
+
+  // Al alterar los filtros de búsqueda, reseteamos a la primera página de resultados
+  useEffect(() => {
+    setPagina(1);
+  }, [filtros]);
 
   // Carga inicial de categorías desde GET /api/categorias
   useEffect(() => {
@@ -87,7 +98,7 @@ export const CatalogPage: React.FC = () => {
     cargarCategorias();
   }, []);
 
-  // Consulta paginada del catálogo GET /api/subastas con filtros
+  // Consulta paginada del catálogo GET /api/subastas con filtros y página activa
   useEffect(() => {
     const cargarSubastas = async () => {
       setCargando(true);
@@ -96,8 +107,8 @@ export const CatalogPage: React.FC = () => {
         if (filtros.estado) params.set('estado', filtros.estado);
         if (filtros.orden) params.set('orden', filtros.orden);
         if (filtros.categoriaId) params.set('categoriaId', String(filtros.categoriaId));
-        params.set('pagina', '1');
-        params.set('tamanoPagina', '20');
+        params.set('pagina', String(pagina));
+        params.set('tamanoPagina', String(TAMANO_PAGINA));
 
         const queryStr = params.toString();
         const endpoint = `/subastas${queryStr ? `?${queryStr}` : ''}`;
@@ -105,13 +116,19 @@ export const CatalogPage: React.FC = () => {
 
         if (resultado && resultado.items && resultado.items.length > 0) {
           setSubastas(resultado.items);
+          setTotalItems(resultado.totalItems);
+          setTotalPaginas(resultado.totalPaginas);
           setIndiceActual(0);
         } else {
           setSubastas([]);
+          setTotalItems(0);
+          setTotalPaginas(1);
           setIndiceActual(0);
         }
       } catch {
         setSubastas([]);
+        setTotalItems(0);
+        setTotalPaginas(1);
         setIndiceActual(0);
       } finally {
         setCargando(false);
@@ -119,10 +136,13 @@ export const CatalogPage: React.FC = () => {
     };
 
     cargarSubastas();
-  }, [filtros]);
+  }, [filtros, pagina]);
 
   // Subasta actual visible en el carrusel
   const subastaActual = subastas[indiceActual] || null;
+
+  // Posición absoluta en el catálogo global (ej. subasta 21 de 22, o 350 de 2000)
+  const posicionGlobal = totalItems > 0 ? (pagina - 1) * TAMANO_PAGINA + indiceActual + 1 : 0;
 
   // Cada vez que cambia la subasta seleccionada en el carrusel, cargamos su detalle (GET /api/subastas/{id})
   useEffect(() => {
@@ -366,9 +386,16 @@ export const CatalogPage: React.FC = () => {
               
               {/* Encabezado del artículo en carrusel */}
               <div className="w-full flex items-center justify-between px-2">
-                <span className="text-xs font-bold font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full">
-                  Subasta {indiceActual + 1} de {subastas.length}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full">
+                    Subasta {posicionGlobal} de {totalItems}
+                  </span>
+                  {totalPaginas > 1 && (
+                    <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 border border-slate-700/60 px-2.5 py-0.5 rounded-full hidden sm:inline-block">
+                      Pág. {pagina}/{totalPaginas}
+                    </span>
+                  )}
+                </div>
 
                 <span
                   className={`text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
@@ -467,6 +494,29 @@ export const CatalogPage: React.FC = () => {
                     : 'Esta subasta ya concluyó y no admite nuevas ofertas.'}
                 </span>
               </div>
+
+              {/* Controles de Paginación de Lotes (homogéneo con Billetera) */}
+              {totalPaginas > 1 && (
+                <div className="w-full sm:w-3/4 flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 text-xs shadow-lg">
+                  <button
+                    onClick={() => setPagina((p) => Math.max(1, p - 1))}
+                    disabled={pagina <= 1 || cargando}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-slate-300 font-semibold transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Anterior
+                  </button>
+                  <span className="text-slate-400 font-mono text-xs">
+                    Página <strong className="text-white">{pagina}</strong> de <strong className="text-white">{totalPaginas}</strong>
+                  </span>
+                  <button
+                    onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+                    disabled={pagina >= totalPaginas || cargando}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-slate-300 font-semibold transition-colors cursor-pointer"
+                  >
+                    Siguiente <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
 
             </div>
 

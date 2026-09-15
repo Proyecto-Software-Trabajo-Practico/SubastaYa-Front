@@ -8,6 +8,7 @@ import { ActivitiesPage } from './pages/ActivitiesPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { WalletPage } from './pages/WalletPage';
+import { CreateAuctionPage } from './pages/CreateAuctionPage';
 
 // Guard 1: Permite el acceso solo si hay sesión activa en estado y storage.
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -80,12 +81,7 @@ export const App: React.FC = () => {
                 path="/publicar"
                 element={
                   <PrivateRoute>
-                    <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center max-w-lg mx-auto mt-12">
-                      <h2 className="text-xl font-bold text-white mb-2">Módulo 2: Publicar Subasta</h2>
-                      <p className="text-sm text-slate-400">
-                        Formulario para dar de alta subastas con validaciones de negocio.
-                      </p>
-                    </div>
+                    <CreateAuctionPage />
                   </PrivateRoute>
                 }
               />
