@@ -12,8 +12,8 @@ export default defineConfig({
     ],
     server: {
         watch: {
-            // Evita que Vite intente vigilar la caché interna de Visual Studio
-            ignored: ['**/.vs/**'],
+            // Evita bloqueos EBUSY en Windows por fotos y caché de VS
+            ignored: ['**/.vs/**', '**/public/imagenes/**'],
         },
     },
 })
