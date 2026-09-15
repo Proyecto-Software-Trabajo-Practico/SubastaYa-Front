@@ -7,6 +7,7 @@ import { CatalogPage } from './pages/CatalogPage';
 import { ActivitiesPage } from './pages/ActivitiesPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { WalletPage } from './pages/WalletPage';
 
 // Guard 1: Permite el acceso solo si hay sesión activa en estado y storage.
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -71,12 +72,7 @@ export const App: React.FC = () => {
                 path="/billetera"
                 element={
                   <PrivateRoute>
-                    <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl text-center max-w-lg mx-auto mt-12">
-                      <h2 className="text-xl font-bold text-white mb-2">Módulo 4: Billetera Virtual</h2>
-                      <p className="text-sm text-slate-400">
-                        Esta sección se conectará con los endpoints de depósitos y transacciones del ledger.
-                      </p>
-                    </div>
+                    <WalletPage />
                   </PrivateRoute>
                 }
               />
