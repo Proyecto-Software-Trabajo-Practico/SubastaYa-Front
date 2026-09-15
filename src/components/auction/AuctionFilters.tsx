@@ -37,12 +37,26 @@ export const AuctionFilters: React.FC<AuctionFiltersProps> = ({
 
   // Handlers para aplicar cada filtro individual
   const seleccionarEstado = (estado: string | null) => {
-    onCambiarFiltro({ ...filtros, estado });
+    /*
+      Regla de Negocio:
+      Si el usuario selecciona un estado diferente a 'ACTIVA' (o limpia el estado)
+      y tenía activo el orden 'tiempo' (finalizan pronto), se resetea ese orden
+      porque solo es aplicable a subastas en curso.
+    */
+    const nuevoOrden = estado !== 'ACTIVA' && filtros.orden === 'tiempo' ? null : filtros.orden;
+    onCambiarFiltro({ ...filtros, estado, orden: nuevoOrden });
     setAbrirMenu(null);
   };
 
   const seleccionarOrden = (orden: 'tiempo' | 'precio_asc' | 'precio_desc' | null) => {
-    onCambiarFiltro({ ...filtros, orden });
+    /*
+      Regla de Negocio:
+      El criterio 'tiempo' (finalizan pronto) solo aplica lógicamente a subastas 'ACTIVA'.
+      Las subastas programadas aún no iniciaron y las finalizadas ya concluyeron.
+      Por ende, al ordenar por tiempo forzamos automáticamente el filtro de estado en 'ACTIVA'.
+    */
+    const nuevoEstado = orden === 'tiempo' ? 'ACTIVA' : filtros.estado;
+    onCambiarFiltro({ ...filtros, orden, estado: nuevoEstado });
     setAbrirMenu(null);
   };
 
@@ -178,7 +192,7 @@ export const AuctionFilters: React.FC<AuctionFiltersProps> = ({
                 onClick={() => seleccionarOrden('tiempo')}
                 className="w-full text-left px-3 py-2 text-xs text-slate-300 hover:bg-slate-700 flex items-center justify-between"
               >
-                <span>Finalizan pronto primero</span>
+                <span>Finalizan pronto (Solo Activas)</span>
                 {filtros.orden === 'tiempo' && <Check className="w-3.5 h-3.5 text-blue-400" />}
               </button>
             </div>
@@ -283,7 +297,7 @@ export const AuctionFilters: React.FC<AuctionFiltersProps> = ({
             {/* Chip de Tiempo Restante */}
             {filtros.orden === 'tiempo' && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-white text-slate-900 border border-slate-200 shadow-sm">
-                <span>FINALIZAN PRONTO</span>
+                <span>FINALIZAN PRONTO (ACTIVAS)</span>
                 <button
                   onClick={() => seleccionarOrden(null)}
                   title="Quitar filtro de tiempo restante"
