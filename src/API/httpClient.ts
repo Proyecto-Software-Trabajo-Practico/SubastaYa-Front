@@ -1,12 +1,12 @@
 /*
   Cliente HTTP centralizado para SubastaYa.
   Encapsula la API nativa fetch para estandarizar cabeceras, 
-  negociación de contenido JSON (RESTful Nivel 2) y captura de errores HTTP.
+  negociación de contenido JSON (RESTful Nivel 2), inyección de JWT y captura de errores HTTP.
 */
 
 const API_BASE_URL = 'https://localhost:7127/api';
 
-// Clase personalizada para capturar y defender respuestas no exitosas (400, 404, 409, 500)
+// Clase personalizada para capturar y defender respuestas no exitosas (400, 401, 404, 409, 500)
 export class ApiError extends Error {
     status: number;
     detalles?: any;
@@ -32,6 +32,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
         headers.set('Accept', 'application/json');
     }
 
+    // Inyección automática del Token JWT almacenado en localStorage
+    const token = localStorage.getItem('jwt_token');
+    if (token && !headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+
     const config: RequestInit = {
         ...options,
         headers,
@@ -48,10 +54,16 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
             try {
                 const bodyError = await response.json();
                 // Captura mensajes emitidos por el ExceptionMiddleware del backend
-                mensajeError = bodyError.message || bodyError.mensaje || mensajeError;
+                mensajeError = bodyError.message || bodyError.mensaje || bodyError.error || mensajeError;
                 detalles = bodyError;
             } catch {
                 // En caso de que la respuesta de error no sea JSON legible
+            }
+
+            // Si el token expiro o es invalido, limpiamos la sesion del storage
+            if (response.status === 401) {
+                localStorage.removeItem('jwt_token');
+                localStorage.removeItem('usuario_data');
             }
 
             throw new ApiError(response.status, mensajeError, detalles);

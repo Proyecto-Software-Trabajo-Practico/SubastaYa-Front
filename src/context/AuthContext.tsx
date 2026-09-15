@@ -1,20 +1,13 @@
-/*
-  Contexto de autenticación y sesión de usuario para SubastaYa.
-  Gestiona el usuario activo en memoria y consulta sus saldos en el backend.
-*/
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { httpClient } from '../API/httpClient';
+import { authApi, type IniciarSesionDto, type RegistrarUsuarioDto, type LoginRespuestaDto } from '../API/authApi';
 
-// Interfaz para el usuario activo en la sesión
 export interface UsuarioSesion {
   id: number;
   nombre: string;
   email: string;
-  rol: 'COMPRADOR' | 'VENDEDOR';
 }
 
-// DTO de saldos de billetera según el contrato del backend (BilleteraSaldosDto)
 export interface BilleteraSaldos {
   id: number;
   usuarioId: number;
@@ -24,61 +17,112 @@ export interface BilleteraSaldos {
 }
 
 interface AuthContextType {
-  usuarioActual: UsuarioSesion;
-  usuariosDisponibles: UsuarioSesion[];
+  token: string | null;
+  usuarioActual: UsuarioSesion | null;
+  isAuthenticated: boolean;
   saldos: BilleteraSaldos | null;
   cargandoSaldos: boolean;
-  cambiarUsuario: (id: number) => void;
+  login: (dto: IniciarSesionDto) => Promise<void>;
+  register: (dto: RegistrarUsuarioDto) => Promise<any>;
+  logout: () => void;
   actualizarSaldos: () => Promise<void>;
 }
-
-// Usuarios mock iniciales para pruebas ágiles de compra y venta
-const USUARIOS_PRUEBA: UsuarioSesion[] = [
-  { id: 1, nombre: 'Vendedor Demo', email: 'vendedor@subastaya.com', rol: 'VENDEDOR' },
-  { id: 2, nombre: 'Comprador Demo', email: 'comprador@subastaya.com', rol: 'COMPRADOR' },
-];
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [usuarioActual, setUsuarioActual] = useState<UsuarioSesion>(USUARIOS_PRUEBA[1]); // Iniciamos como comprador
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('jwt_token'));
+  const [usuarioActual, setUsuarioActual] = useState<UsuarioSesion | null>(() => {
+    const savedUser = localStorage.getItem('usuario_data');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+
   const [saldos, setSaldos] = useState<BilleteraSaldos | null>(null);
   const [cargandoSaldos, setCargandoSaldos] = useState<boolean>(false);
 
-  // Consulta el saldo en el backend GET /api/billeteras/{usuarioId}/saldos
+  // Escuchador para reevaluar la sesión cuando el navegador retrocede usando memoria caché (bfcache)
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        const tokenStorage = localStorage.getItem('jwt_token');
+        if (!tokenStorage) {
+          setToken(null);
+          setUsuarioActual(null);
+          setSaldos(null);
+        }
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
   const actualizarSaldos = async () => {
+    if (!usuarioActual) {
+      setSaldos(null);
+      return;
+    }
+
     try {
       setCargandoSaldos(true);
       const data = await httpClient.get<BilleteraSaldos>(`/billeteras/${usuarioActual.id}/saldos`);
       setSaldos(data);
     } catch {
-      // Si el backend no está encendido o la billetera aún no existe, mantenemos saldos en null de forma segura
       setSaldos(null);
     } finally {
       setCargandoSaldos(false);
     }
   };
 
-  // Cada vez que se cambia de usuario, refrescamos los saldos de su billetera
   useEffect(() => {
-    actualizarSaldos();
-  }, [usuarioActual.id]);
-
-  const cambiarUsuario = (id: number) => {
-    const seleccionado = USUARIOS_PRUEBA.find((u) => u.id === id);
-    if (seleccionado) {
-      setUsuarioActual(seleccionado);
+    if (usuarioActual) {
+      actualizarSaldos();
+    } else {
+      setSaldos(null);
     }
+  }, [usuarioActual?.id]);
+
+  const guardarSesion = (tokenJWT: string, usuario: UsuarioSesion) => {
+    setToken(tokenJWT);
+    setUsuarioActual(usuario);
+    localStorage.setItem('jwt_token', tokenJWT);
+    localStorage.setItem('usuario_data', JSON.stringify(usuario));
+  };
+
+  const login = async (dto: IniciarSesionDto) => {
+    const respuesta: LoginRespuestaDto = await authApi.login(dto);
+    const usuario: UsuarioSesion = {
+      id: respuesta.id,
+      nombre: respuesta.nombre,
+      email: respuesta.email,
+    };
+    guardarSesion(respuesta.token, usuario);
+  };
+
+  const register = async (dto: RegistrarUsuarioDto) => {
+    const respuesta = await authApi.registrar(dto);
+    return respuesta;
+  };
+
+  const logout = () => {
+    setToken(null);
+    setUsuarioActual(null);
+    setSaldos(null);
+    localStorage.removeItem('jwt_token');
+    localStorage.removeItem('usuario_data');
   };
 
   return (
     <AuthContext.Provider
       value={{
+        token,
         usuarioActual,
-        usuariosDisponibles: USUARIOS_PRUEBA,
+        isAuthenticated: !!token,
         saldos,
         cargandoSaldos,
-        cambiarUsuario,
+        login,
+        register,
+        logout,
         actualizarSaldos,
       }}
     >
@@ -87,7 +131,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-// Hook personalizado para consumir el contexto de forma segura
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
