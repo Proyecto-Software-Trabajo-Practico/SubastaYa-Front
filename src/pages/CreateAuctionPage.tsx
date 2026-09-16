@@ -3,7 +3,7 @@
   Corresponde al Módulo 2 del proyecto SubastaYa.
   
   Rol Arquitectónico:
-  - Orquesta el estado reactivo del formulario de publicación.
+  - Orquesta el estado reactivo del formulario de publicación con persistencia en localStorage.
   - Coordina la selección de categoría y la subida de imagen local en memoria (Base64).
   - Delega la comunicación HTTP a subastaApi (principio DIP).
   - Despliega la tarjeta reactiva de previsualización en vivo (AuctionPreviewCard).
@@ -22,69 +22,18 @@ import {
   Sparkles,
   ArrowRight,
   Gavel,
-  PackageCheck
+  PackageCheck,
+  RotateCcw
 } from 'lucide-react';
 import { subastaApi, type CategoriaDto, type CrearSubastaDto } from '../API/subastaApi';
 import { ApiError } from '../API/httpClient';
 import { AuctionPreviewCard } from '../components/auction/AuctionPreviewCard';
 
+const DRAFT_KEY = 'subasta_form_draft_data';
+
 export const CreateAuctionPage: React.FC = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Estados del Formulario
-  const [titulo, setTitulo] = useState<string>('');
-  const [categoriaId, setCategoriaId] = useState<number | ''>('');
-  const [descripcion, setDescripcion] = useState<string>('');
-  const [precioBase, setPrecioBase] = useState<number | ''>('');
-  const [incrementoMinimo, setIncrementoMinimo] = useState<number | ''>('');
-  const [urlImagen, setUrlImagen] = useState<string | null>(null);
-  const [nombreArchivo, setNombreArchivo] = useState<string>('');
-
-  // Fechas y Cronograma
-  const [esInmediata, setEsInmediata] = useState<boolean>(true);
-  const [fechaInicioManual, setFechaInicioManual] = useState<string>('');
-  const [fechaFinManual, setFechaFinManual] = useState<string>('');
-
-  // Categorías cargadas desde el backend
-  const [categorias, setCategorias] = useState<CategoriaDto[]>([]);
-  const [cargandoCategorias, setCargandoCategorias] = useState<boolean>(true);
-
-  // Estados de control de flujo
-  const [enviando, setEnviando] = useState<boolean>(false);
-  const [errorFormulario, setErrorFormulario] = useState<string | null>(null);
-  const [subastaCreadaId, setSubastaCreadaId] = useState<number | null>(null);
-
-  /*
-    Al montar el componente, inicializamos:
-    1. Las categorías desde GET /api/categorias.
-    2. La fecha de fin por defecto a 24 horas a partir de ahora.
-  */
-  useEffect(() => {
-    const inicializar = async () => {
-      try {
-        const data = await subastaApi.obtenerCategorias();
-        setCategorias(data);
-        if (data.length > 0) {
-          setCategoriaId(data[0].id);
-        }
-      } catch {
-        setErrorFormulario('No se pudieron obtener las categorías desde el servidor.');
-      } finally {
-        setCargandoCategorias(false);
-      }
-    };
-
-    inicializar();
-
-    // Fecha fin por defecto: 24 horas hacia el futuro
-    const finPorDefecto = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    setFechaFinManual(formatearParaInput(finPorDefecto));
-
-    // Fecha inicio por defecto: momento actual
-    const ahora = new Date();
-    setFechaInicioManual(formatearParaInput(ahora));
-  }, []);
 
   // Formateador de fecha local para el input HTML datetime-local (YYYY-MM-DDTHH:mm)
   const formatearParaInput = (date: Date): string => {
@@ -97,6 +46,114 @@ export const CreateAuctionPage: React.FC = () => {
     return `${anio}-${mes}-${dia}T${horas}:${minutos}`;
   };
 
+  // 1. Cargar borrador persistido o definir estados iniciales
+  const [draftLoaded] = useState(() => {
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // Ignorar si hay fallo de lectura
+      }
+    }
+    return null;
+  });
+
+  // Estados del Formulario (con fallback al borrador o por defecto)
+  const [titulo, setTitulo] = useState<string>(draftLoaded?.titulo ?? '');
+  const [categoriaId, setCategoriaId] = useState<number | ''>(draftLoaded?.categoriaId ?? '');
+  const [descripcion, setDescripcion] = useState<string>(draftLoaded?.descripcion ?? '');
+  const [precioBase, setPrecioBase] = useState<number | ''>(draftLoaded?.precioBase ?? '');
+  const [incrementoMinimo, setIncrementoMinimo] = useState<number | ''>(draftLoaded?.incrementoMinimo ?? '');
+  const [urlImagen, setUrlImagen] = useState<string | null>(draftLoaded?.urlImagen ?? null);
+  const [nombreArchivo, setNombreArchivo] = useState<string>(draftLoaded?.nombreArchivo ?? '');
+
+  // Fechas y Cronograma
+  const [esInmediata, setEsInmediata] = useState<boolean>(draftLoaded?.esInmediata ?? true);
+  const [fechaInicioManual, setFechaInicioManual] = useState<string>(
+    draftLoaded?.fechaInicioManual ?? formatearParaInput(new Date())
+  );
+  const [fechaFinManual, setFechaFinManual] = useState<string>(
+    draftLoaded?.fechaFinManual ?? formatearParaInput(new Date(Date.now() + 24 * 60 * 60 * 1000))
+  );
+
+  // Categorías cargadas desde el backend
+  const [categorias, setCategorias] = useState<CategoriaDto[]>([]);
+  const [cargandoCategorias, setCargandoCategorias] = useState<boolean>(true);
+
+  // Estados de control de flujo
+  const [enviando, setEnviando] = useState<boolean>(false);
+  const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
+  const [errorFechas, setErrorFechas] = useState<string | null>(null);
+  const [subastaCreadaId, setSubastaCreadaId] = useState<number | null>(null);
+
+  /*
+    Inicialización de categorías desde GET /api/categorias.
+  */
+  useEffect(() => {
+    const inicializar = async () => {
+      try {
+        const data = await subastaApi.obtenerCategorias();
+        setCategorias(data);
+        if (data.length > 0 && !categoriaId) {
+          setCategoriaId(data[0].id);
+        }
+      } catch {
+        setErrorGeneral('No se pudieron obtener las categorías desde el servidor.');
+      } finally {
+        setCargandoCategorias(false);
+      }
+    };
+
+    inicializar();
+  }, []);
+
+  /*
+    PUNTO 2: Persistencia automática en localStorage ante cambios en los campos.
+  */
+  useEffect(() => {
+    const draft = {
+      titulo,
+      categoriaId,
+      descripcion,
+      precioBase,
+      incrementoMinimo,
+      urlImagen,
+      nombreArchivo,
+      esInmediata,
+      fechaInicioManual,
+      fechaFinManual
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  }, [
+    titulo, 
+    categoriaId, 
+    descripcion, 
+    precioBase, 
+    incrementoMinimo, 
+    urlImagen, 
+    nombreArchivo, 
+    esInmediata, 
+    fechaInicioManual, 
+    fechaFinManual
+  ]);
+
+  /*
+    PUNTO 3: Reloj dinámico de 1 minuto para actualizar la fecha de inicio cuando "esInmediata" está activo.
+  */
+  useEffect(() => {
+    if (!esInmediata) return;
+
+    // Actualizar inmediatamente la fecha al seleccionar la opción
+    setFechaInicioManual(formatearParaInput(new Date()));
+
+    const interval = setInterval(() => {
+      setFechaInicioManual(formatearParaInput(new Date()));
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [esInmediata]);
+
   /*
     Atajos rápidos para asignar la duración de la subasta con un clic
   */
@@ -107,7 +164,7 @@ export const CreateAuctionPage: React.FC = () => {
   };
 
   /*
-    Manejo del cambio de precio base y cálculo de sugerencias porcentuales automáticas
+    Manejo de precios e incremento
   */
   const handlePrecioBaseChange = (valor: number | '') => {
     setPrecioBase(valor);
@@ -127,15 +184,14 @@ export const CreateAuctionPage: React.FC = () => {
   };
 
   /*
-    Mecanismo de subida de imagen local:
-    Abre la ventana de Windows, lee el archivo seleccionado y lo convierte en Base64.
+    Subida de imagen local a Base64
   */
   const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      setErrorFormulario('El archivo seleccionado debe ser una imagen válida (PNG, JPG, WEBP).');
+      setErrorGeneral('El archivo seleccionado debe ser una imagen válida (PNG, JPG, WEBP).');
       return;
     }
 
@@ -143,10 +199,10 @@ export const CreateAuctionPage: React.FC = () => {
     const reader = new FileReader();
     reader.onload = () => {
       setUrlImagen(reader.result as string);
-      setErrorFormulario(null);
+      setErrorGeneral(null);
     };
     reader.onerror = () => {
-      setErrorFormulario('Error al leer el archivo de imagen en memoria.');
+      setErrorGeneral('Error al leer el archivo de imagen en memoria.');
     };
     reader.readAsDataURL(file);
   };
@@ -160,45 +216,69 @@ export const CreateAuctionPage: React.FC = () => {
   };
 
   /*
+    Limpieza voluntaria del borrador guardado
+  */
+  const handleLimpiarBorrador = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setTitulo('');
+    setDescripcion('');
+    setPrecioBase('');
+    setIncrementoMinimo('');
+    setUrlImagen(null);
+    setNombreArchivo('');
+    setEsInmediata(true);
+    const ahora = new Date();
+    setFechaInicioManual(formatearParaInput(ahora));
+    setFechaFinManual(formatearParaInput(new Date(ahora.getTime() + 24 * 60 * 60 * 1000)));
+    setErrorGeneral(null);
+    setErrorFechas(null);
+  };
+
+  /*
     Envío del formulario y validaciones previas de negocio
   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorFormulario(null);
+    setErrorGeneral(null);
+    setErrorFechas(null);
 
     if (!titulo.trim()) {
-      setErrorFormulario('Por favor, indicá un título para tu producto.');
+      setErrorGeneral('Por favor, indicá un título para tu producto.');
       return;
     }
     if (!categoriaId) {
-      setErrorFormulario('Debes seleccionar una categoría válida.');
+      setErrorGeneral('Debes seleccionar una categoría válida.');
       return;
     }
     if (!descripcion.trim()) {
-      setErrorFormulario('La descripción del producto es obligatoria.');
+      setErrorGeneral('La descripción del producto es obligatoria.');
       return;
     }
     const numPrecio = Number(precioBase);
     if (!numPrecio || numPrecio <= 0) {
-      setErrorFormulario('El precio base debe ser un importe mayor a cero.');
+      setErrorGeneral('El precio base debe ser un importe mayor a cero.');
       return;
     }
     const numIncremento = Number(incrementoMinimo);
     if (!numIncremento || numIncremento <= 0) {
-      setErrorFormulario('El incremento mínimo debe ser un importe mayor a cero.');
+      setErrorGeneral('El incremento mínimo debe ser un importe mayor a cero.');
       return;
     }
 
-    // Validación de fechas
+    // PUNTO 4: Validación de Fechas con error focalizado
     const fechaInicioDate = esInmediata ? new Date() : new Date(fechaInicioManual);
     const fechaFinDate = new Date(fechaFinManual);
 
     if (isNaN(fechaFinDate.getTime())) {
-      setErrorFormulario('La fecha de finalización no tiene un formato válido.');
+      setErrorFechas('La fecha de finalización no tiene un formato válido.');
+      return;
+    }
+    if (!esInmediata && fechaInicioDate < new Date(Date.now() - 60000)) {
+      setErrorFechas('La fecha y hora de inicio programada no puede estar en el pasado.');
       return;
     }
     if (fechaFinDate <= fechaInicioDate) {
-      setErrorFormulario('La fecha de finalización debe ser posterior a la fecha de inicio.');
+      setErrorFechas('La fecha de finalización debe ser estrictamente posterior a la fecha de inicio.');
       return;
     }
 
@@ -216,12 +296,13 @@ export const CreateAuctionPage: React.FC = () => {
     setEnviando(true);
     try {
       const resultado = await subastaApi.crearSubasta(payload);
+      localStorage.removeItem(DRAFT_KEY);
       setSubastaCreadaId(resultado.id);
     } catch (err) {
       if (err instanceof ApiError) {
-        setErrorFormulario(err.message);
+        setErrorGeneral(err.message);
       } else {
-        setErrorFormulario('Ocurrió un error inesperado al publicar la subasta.');
+        setErrorGeneral('Ocurrió un error inesperado al publicar la subasta.');
       }
     } finally {
       setEnviando(false);
@@ -233,25 +314,38 @@ export const CreateAuctionPage: React.FC = () => {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Cabecera de la sección */}
-      <div className="border-b border-slate-800 pb-5">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
-          <PlusCircle className="w-8 h-8 text-amber-500" />
-          Publicar Nueva Subasta
-        </h1>
-        <p className="text-slate-400 text-sm mt-1">
-          Completá los datos del artículo, definí las condiciones económicas y lanzá la subasta al catálogo en vivo.
-        </p>
+      <div className="border-b border-slate-800 pb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-3">
+            <PlusCircle className="w-8 h-8 text-amber-500" />
+            Publicar Nueva Subasta
+          </h1>
+          <p className="text-slate-400 text-sm mt-1">
+            Completá los datos del artículo, definí las condiciones económicas y lanzá la subasta al catálogo en vivo.
+          </p>
+        </div>
+
+        {/* Botón de Limpiar Borrador Persistido */}
+        <button
+          type="button"
+          onClick={handleLimpiarBorrador}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 text-xs font-semibold rounded-xl border border-slate-700 transition"
+          title="Borrar los datos guardados del borrador"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>Limpiar Borrador</span>
+        </button>
       </div>
 
-      {/* Cartel de Error General si existiera */}
-      {errorFormulario && (
+      {/* Cartel de Error General */}
+      {errorGeneral && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex items-center gap-3 text-red-400 text-sm">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span>{errorFormulario}</span>
+          <span>{errorGeneral}</span>
         </div>
       )}
 
-      {/* Disposición en 2 Columnas: Formulario (Izq) + Previsualización en Vivo (Der) */}
+      {/* Disposición en 2 Columnas */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* ================= COLUMNA IZQUIERDA: FORMULARIO ================= */}
@@ -264,7 +358,6 @@ export const CreateAuctionPage: React.FC = () => {
               1. Información General del Producto
             </h2>
 
-            {/* Título */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300 block">
                 Título del Artículo <span className="text-red-400">*</span>
@@ -280,7 +373,6 @@ export const CreateAuctionPage: React.FC = () => {
               />
             </div>
 
-            {/* Categoría */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300 block">
                 Categoría <span className="text-red-400">*</span>
@@ -304,7 +396,6 @@ export const CreateAuctionPage: React.FC = () => {
               </select>
             </div>
 
-            {/* Descripción */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300 block">
                 Descripción y Estado del Artículo <span className="text-red-400">*</span>
@@ -328,7 +419,6 @@ export const CreateAuctionPage: React.FC = () => {
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Precio Base */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-300 block">
                   Precio Base Inicial ($) <span className="text-red-400">*</span>
@@ -346,7 +436,6 @@ export const CreateAuctionPage: React.FC = () => {
                     className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl pl-8 pr-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 transition-colors"
                   />
                 </div>
-                {/* Formato legible con separadores de miles para cifras grandes */}
                 {Number(precioBase) > 0 ? (
                   <span className="text-[11px] font-mono text-emerald-400 font-semibold block">
                     Equivale a: $ {Number(precioBase).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
@@ -356,7 +445,6 @@ export const CreateAuctionPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Incremento Mínimo */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-300 block">
                   Incremento Mínimo ($) <span className="text-red-400">*</span>
@@ -384,7 +472,6 @@ export const CreateAuctionPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Botones de sugerencia porcentual automática */}
             <div className="pt-1 flex flex-wrap items-center gap-2">
               <span className="text-[11px] text-slate-400 font-medium">Sugerencia porcentual automática:</span>
               <button
@@ -392,7 +479,6 @@ export const CreateAuctionPage: React.FC = () => {
                 disabled={!precioBase || Number(precioBase) <= 0}
                 onClick={() => aplicarPorcentaje(5)}
                 className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 hover:text-white rounded-xl text-xs font-semibold font-mono transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-                title="Calcular automáticamente el 5% del precio base"
               >
                 <span>5%</span>
                 {Number(precioBase) > 0 && (
@@ -407,7 +493,6 @@ export const CreateAuctionPage: React.FC = () => {
                 disabled={!precioBase || Number(precioBase) <= 0}
                 onClick={() => aplicarPorcentaje(10)}
                 className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 hover:text-white rounded-xl text-xs font-semibold font-mono transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-                title="Calcular automáticamente el 10% del precio base"
               >
                 <span>10%</span>
                 {Number(precioBase) > 0 && (
@@ -426,7 +511,6 @@ export const CreateAuctionPage: React.FC = () => {
               3. Tiempos y Duración
             </h2>
 
-            {/* Checkbox de inicio inmediato */}
             <label className="flex items-center gap-3 bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 cursor-pointer hover:border-slate-700 transition-colors">
               <input
                 type="checkbox"
@@ -442,7 +526,14 @@ export const CreateAuctionPage: React.FC = () => {
               </div>
             </label>
 
-            {/* Si no es inmediata, selector manual de inicio */}
+            {/* PUNTO 4: Cartel de Error Focalizado para Fechas */}
+            {errorFechas && (
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 flex items-center gap-2.5 text-rose-400 text-xs font-medium">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{errorFechas}</span>
+              </div>
+            )}
+
             {!esInmediata && (
               <div className="space-y-1.5 pt-1">
                 <label className="text-xs font-semibold text-slate-300 block">
@@ -458,10 +549,9 @@ export const CreateAuctionPage: React.FC = () => {
               </div>
             )}
 
-            {/* Atajos rápidos de duración */}
             <div className="space-y-2 pt-1">
               <span className="text-xs font-semibold text-slate-300 block">
-                Atajos de duración rápida:
+                Atajos de duración rápida desde el inicio:
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
@@ -483,7 +573,6 @@ export const CreateAuctionPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Selector de Fecha de Fin */}
             <div className="space-y-1.5 pt-1">
               <label className="text-xs font-semibold text-slate-300 block">
                 Fecha y Hora de Cierre <span className="text-red-400">*</span>
@@ -505,7 +594,6 @@ export const CreateAuctionPage: React.FC = () => {
               4. Fotografía del Producto
             </h2>
 
-            {/* Input file nativo oculto */}
             <input
               type="file"
               ref={fileInputRef}
@@ -570,7 +658,6 @@ export const CreateAuctionPage: React.FC = () => {
             )}
           </div>
 
-          {/* Botón de Enviar */}
           <button
             type="submit"
             disabled={enviando}
@@ -591,7 +678,7 @@ export const CreateAuctionPage: React.FC = () => {
         </form>
 
         {/* ================= COLUMNA DERECHA: PREVIEW EN VIVO ================= */}
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-5 sticky top-24">
           <AuctionPreviewCard
             titulo={titulo}
             categoriaNombre={categoriaSeleccionada?.nombre}
@@ -611,7 +698,6 @@ export const CreateAuctionPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="relative w-full max-w-lg bg-slate-900 border-2 border-emerald-500/80 rounded-3xl p-8 text-center space-y-6 shadow-2xl shadow-emerald-500/20 transform animate-in zoom-in-95 duration-300">
             
-            {/* Icono de Éxito con Aura Verde Esmeralda */}
             <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
               <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping opacity-75" />
               <div className="relative bg-emerald-500 text-slate-950 p-4 rounded-full shadow-lg shadow-emerald-500/40">
@@ -619,7 +705,6 @@ export const CreateAuctionPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Título y Mensaje */}
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full text-xs font-bold uppercase tracking-widest text-emerald-400">
                 <Sparkles className="w-3.5 h-3.5" /> ¡Publicación Exitosa!
@@ -632,7 +717,6 @@ export const CreateAuctionPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Acciones de Navegación Directa */}
             <div className="flex flex-col gap-3 pt-2">
               <button
                 onClick={() => navigate(`/subastas/${subastaCreadaId}`)}
