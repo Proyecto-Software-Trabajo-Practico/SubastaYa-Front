@@ -14,7 +14,7 @@ export interface PujaItem {
   monto: number;
   fechaPuja: string | Date;
   compradorId: number;
-  compradorNombre: string;
+  compradorNombre?: string;
 }
 
 interface PujaHistoryListProps {
@@ -24,7 +24,7 @@ interface PujaHistoryListProps {
 
 export const PujaHistoryList: React.FC<PujaHistoryListProps> = ({ pujas, cargando = false }) => {
   // Función helper para anonimizar el nombre del postor (ej. "Comprador D***")
-  const anonimizarNombre = (nombre: string, id: number) => {
+  const anonimizarNombre = (nombre: string | undefined, id: number) => {
     if (!nombre) return `Postor #${id}`;
     const partes = nombre.trim().split(' ');
     if (partes.length >= 2) {
