@@ -1,8 +1,9 @@
 /*
-  Página de Mis Actividades (ActivitiesPage).
-  Corresponde al Módulo 5 del TP.
-  Incluye caché en sessionStorage para evitar parpadeos y spinners al navegar entre páginas.
-  Optimización mediante Promise.all para la resolución paralela de pujas del comprador.
+  Página de Mis Actividades (ActivitiesPage.tsx)
+  Módulo 5 del TP: Cumple con los requerimientos exigidos por la cátedra.
+  - Pestaña "Mis Publicaciones": Gestión de publicaciones como vendedor.
+  - Pestaña "Mis Compras / Pujas": Listado completo de subastas donde participó el usuario,
+    indicando si está en competencia (GANANDO / SUPERADO) o si la subasta finalizó (¡GANASTE! / NO ADJUDICADA).
 */
 
 import React, { useState, useEffect } from 'react';
@@ -15,14 +16,14 @@ import {
   Gavel, 
   Trophy, 
   AlertTriangle, 
-  ExternalLink,
-  Clock,
-  TrendingUp,
-  RefreshCw,
-  PlusCircle
+  ExternalLink, 
+  Clock, 
+  TrendingUp, 
+  RefreshCw, 
+  PlusCircle 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { subastaApi, type SubastaCardDto, type SubastaDetalleDto } from '../API/subastaApi';
+import { subastaApi, type SubastaCardDto } from '../API/subastaApi';
 
 interface OfertaCompradorItem {
   subasta: SubastaCardDto;
@@ -69,7 +70,6 @@ export const ActivitiesPage: React.FC = () => {
 
   const [tabActiva, setTabActiva] = useState<'publicaciones' | 'pujas'>('publicaciones');
 
-  // Inicializar estado directamente desde sessionStorage si existe
   const [misPublicaciones, setMisPublicaciones] = useState<SubastaCardDto[]>(() => {
     const cached = sessionStorage.getItem(CACHE_PUBS_KEY);
     return cached ? JSON.parse(cached) : [];
@@ -80,57 +80,88 @@ export const ActivitiesPage: React.FC = () => {
     return cached ? JSON.parse(cached) : [];
   });
 
-  // Si ya había datos en caché, no mostramos el estado de carga inicial
   const [cargando, setCargando] = useState<boolean>(() => {
-    return !sessionStorage.getItem(CACHE_PUBS_KEY);
+    const hasPubs = !!sessionStorage.getItem(CACHE_PUBS_KEY);
+    const hasOfertas = !!sessionStorage.getItem(CACHE_OFERTAS_KEY);
+    return !(hasPubs && hasOfertas);
   });
 
   const cargarDatos = async (forzarRefresco = false) => {
     if (!usuarioActual?.id) return;
     
-    // Si ya tenemos datos y no es un refresco forzado por botón, no mostramos el loader gigante
-    if (forzarRefresco || misPublicaciones.length === 0) {
+    if (forzarRefresco || misPublicaciones.length === 0 || misOfertas.length === 0) {
       setCargando(true);
     }
 
     try {
       // 1. Cargar Publicaciones del Vendedor
-      const resPubs = await subastaApi.obtenerMisPublicaciones(usuarioActual.id, 1, 100);
+      const resPubs = await subastaApi.obtenerMisPublicaciones(usuarioActual.id, 1, 50);
       const pubsFetched = resPubs.items || [];
       setMisPublicaciones(pubsFetched);
       sessionStorage.setItem(CACHE_PUBS_KEY, JSON.stringify(pubsFetched));
 
-      // 2. Cargar Catálogo General
-      const resCat = await subastaApi.obtenerCatalogoGeneral(1, 100);
-      const catalogoItems = resCat.items || [];
+      // 2. Consulta Paginada y Acotada (ACTIVAS + FINALIZADAS)
+      // Se utiliza un tamaño de página de 10/15 para acotar el tamaño del JSON de respuesta.
+      const [resActivas, resFinalizadas] = await Promise.all([
+        subastaApi.obtenerCatalogoGeneral(1, 15, 'ACTIVA').catch(() => ({ items: [] })),
+        subastaApi.obtenerCatalogoGeneral(1, 15, 'FINALIZADA').catch(() => ({ items: [] }))
+      ]);
 
-      // 3. OPTIMIZACIÓN: Disparar TODAS las peticiones de detalle simultáneamente en paralelo
-      const detallesPromises = catalogoItems.map(item =>
-        subastaApi.obtenerDetalleSubasta(item.id).catch(() => null)
+      const catalogoItems = [
+        ...(resActivas.items || []),
+        ...(resFinalizadas.items || [])
+      ];
+
+      // 3. Rehidratación con localStorage para asegurar la presencia de subastas históricas
+      const idsLocales: number[] = JSON.parse(localStorage.getItem('mis_subastas_ofertadas') || '[]');
+      const idsCatalogoConPujas = catalogoItems.filter(item => item.cantidadPujas > 0).map(i => i.id);
+
+      const todosLosIds = Array.from(new Set([...idsCatalogoConPujas, ...idsLocales]));
+
+      // 4. Obtener detalle de las subastas en las que participó el usuario
+      const detallesPromises = todosLosIds.map(id =>
+        subastaApi.obtenerDetalleSubasta(id).catch(() => null)
       );
 
-      // Tipado explícito para evitar advertencias de TypeScript con la interfaz importada
-      const detallesResult: (SubastaDetalleDto | null)[] = await Promise.all(detallesPromises);
+      const detallesResult: any[] = await Promise.all(detallesPromises);
 
-      // 4. Procesar y filtrar los resultados en memoria
+      // 5. Mapear resultados clasificando según estado (GANANDO, SUPERADO, GANADA, NO_ADJUDICADA)
       const itemsComprador: OfertaCompradorItem[] = [];
 
-      detallesResult.forEach((detalle, index) => {
-        // Si falló la petición individual o no hay pujas, salteamos
-        if (!detalle || !detalle.pujas || detalle.pujas.length === 0) return;
+      detallesResult.forEach((detalle) => {
+        if (!detalle) return;
 
-        const item = catalogoItems[index];
-        const misPujasEnSubasta = detalle.pujas.filter(p => p.usuarioId === usuarioActual.id);
+        const listaPujas: any[] = detalle.ultimasPujas || detalle.pujas || [];
+        if (listaPujas.length === 0) return;
+
+        const item: SubastaCardDto = {
+          id: detalle.id,
+          titulo: detalle.titulo,
+          precioBase: detalle.precioBase,
+          precioActual: detalle.precioActual,
+          cantidadPujas: detalle.cantidadPujas || listaPujas.length,
+          fechaFin: detalle.fechaFin,
+          estado: detalle.estado,
+          urlImagen: detalle.urlImagen,
+          categoriaId: detalle.categoriaId || 0,
+          categoriaNombre: detalle.categoriaNombre
+        };
+
+        const misPujasEnSubasta = listaPujas.filter((p: any) => {
+          const idPujaUsuario = String(p.compradorId ?? p.usuarioId ?? p.comprador?.id ?? '');
+          return idPujaUsuario === String(usuarioActual.id);
+        });
 
         if (misPujasEnSubasta.length > 0) {
-          const mayorOfertaPropia = Math.max(...misPujasEnSubasta.map(p => p.monto));
+          const mayorOfertaPropia = Math.max(...misPujasEnSubasta.map((p: any) => Number(p.monto || 0)));
           
-          // El mayor oferente global es el usuario con la puja de mayor monto en el array
-          const pujaMasAltaGlobal = detalle.pujas.reduce(
-            (max, p) => (p.monto > max.monto ? p : max), 
-            detalle.pujas[0]
+          const pujaMasAltaGlobal = listaPujas.reduce(
+            (max: any, p: any) => (Number(p.monto) > Number(max.monto) ? p : max), 
+            listaPujas[0]
           );
-          const esMayorOferenteGlobal = pujaMasAltaGlobal.usuarioId === usuarioActual.id;
+
+          const idLiderGlobal = String(pujaMasAltaGlobal.compradorId ?? pujaMasAltaGlobal.usuarioId ?? '');
+          const esMayorOferenteGlobal = idLiderGlobal === String(usuarioActual.id);
 
           const activaReal = estaVigente(item);
           let estadoPuja: 'GANANDO' | 'SUPERADO' | 'GANADA' | 'NO_ADJUDICADA';
@@ -151,16 +182,18 @@ export const ActivitiesPage: React.FC = () => {
 
       setMisOfertas(itemsComprador);
       sessionStorage.setItem(CACHE_OFERTAS_KEY, JSON.stringify(itemsComprador));
-    } catch {
-      // Error silencioso
+    } catch (err) {
+      console.error("Error cargando datos de actividades:", err);
     } finally {
       setCargando(false);
     }
   };
 
   useEffect(() => {
-    // Si no hay nada en caché, hacemos el fetch inicial
-    if (!sessionStorage.getItem(CACHE_PUBS_KEY)) {
+    const cachePubs = sessionStorage.getItem(CACHE_PUBS_KEY);
+    const cacheOfertas = sessionStorage.getItem(CACHE_OFERTAS_KEY);
+
+    if (!cachePubs || !cacheOfertas) {
       cargarDatos();
     }
   }, [usuarioActual?.id]);
@@ -230,7 +263,6 @@ export const ActivitiesPage: React.FC = () => {
       {/* PESTAÑA 1: MIS PUBLICACIONES (ROL VENDEDOR) */}
       {tabActiva === 'publicaciones' && (
         <div className="space-y-6">
-          {/* Tarjetas KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
               <div>
@@ -246,12 +278,12 @@ export const ActivitiesPage: React.FC = () => {
 
             <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
               <div>
-                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">Proyección de venta</span>
-                <span className="text-xl font-bold font-mono text-amber-400 mt-1 block">
+                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">Recaudación en Juego</span>
+                <span className="text-xl font-bold font-mono text-blue-400 mt-1 block">
                   $ {recaudacionEnJuego.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                 </span>
               </div>
-              <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl">
+              <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl">
                 <TrendingUp className="w-6 h-6" />
               </div>
             </div>
@@ -259,17 +291,16 @@ export const ActivitiesPage: React.FC = () => {
             <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
               <div>
                 <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">Subastas Activas</span>
-                <span className="text-xl font-bold font-mono text-blue-400 mt-1 block">
+                <span className="text-xl font-bold font-mono text-amber-400 mt-1 block">
                   {publicacionesActivasCount} {publicacionesActivasCount === 1 ? 'artículo' : 'artículos'}
                 </span>
               </div>
-              <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl">
+              <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl">
                 <Gavel className="w-6 h-6" />
               </div>
             </div>
           </div>
 
-          {/* Grilla de Publicaciones */}
           {cargando && misPublicaciones.length === 0 ? (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
               Cargando tus publicaciones...
@@ -280,30 +311,27 @@ export const ActivitiesPage: React.FC = () => {
                 <Package className="w-10 h-10" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">No tenés subastas creadas</h3>
+                <h3 className="text-lg font-bold text-white">No tenés publicaciones activas</h3>
                 <p className="text-sm text-slate-400 max-w-sm mx-auto mt-1">
-                  Publicá tu primer artículo para empezar a recibir ofertas en vivo de compradores.
+                  Publicá un artículo para comenzar a recibir ofertas en vivo de compradores.
                 </p>
               </div>
               <Link
                 to="/publicar"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-sm transition"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition"
               >
-                <PlusCircle className="w-4 h-4" /> Publicar Subasta Ahora
+                <PlusCircle className="w-4 h-4" /> Publicar una Subasta
               </Link>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {misPublicaciones.map((sub) => {
-                const esActiva = estaVigente(sub);
-                const esAdjudicada = !esActiva && sub.cantidadPujas > 0;
-                const esDesierta = !esActiva && sub.cantidadPujas === 0;
-
+              {misPublicaciones.map((subasta) => {
+                const activa = estaVigente(subasta);
                 return (
-                  <div key={sub.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex gap-4 items-center hover:border-slate-700 transition">
+                  <div key={subasta.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex gap-4 items-center hover:border-slate-700 transition">
                     <div className="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
-                      {sub.urlImagen ? (
-                        <img src={sub.urlImagen} alt={sub.titulo} className="w-full h-full object-cover" />
+                      {subasta.urlImagen ? (
+                        <img src={subasta.urlImagen} alt={subasta.titulo} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-600">
                           <Package className="w-8 h-8" />
@@ -313,35 +341,28 @@ export const ActivitiesPage: React.FC = () => {
 
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider truncate">
-                          {sub.categoriaNombre || 'Categoría'}
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                          {subasta.categoriaNombre || 'General'}
                         </span>
-
-                        {esActiva && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> ACTIVA
-                          </span>
-                        )}
-                        {esAdjudicada && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1 shrink-0">
-                            <Trophy className="w-3 h-3" /> ADJUDICADA
-                          </span>
-                        )}
-                        {esDesierta && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
-                            DESIERTA
-                          </span>
-                        )}
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
+                            activa
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : subasta.cantidadPujas > 0
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}
+                        >
+                          {activa ? 'ACTIVA' : subasta.cantidadPujas > 0 ? 'ADJUDICADA' : 'DESIERTA'}
+                        </span>
                       </div>
 
-                      <h4 className="text-sm font-bold text-white truncate">{sub.titulo}</h4>
+                      <h4 className="text-sm font-bold text-white truncate">{subasta.titulo}</h4>
 
                       <div className="flex items-center justify-between text-xs pt-1">
-                        <span className="text-slate-400">
-                          Pujas: <strong className="text-white font-mono">{sub.cantidadPujas}</strong>
-                        </span>
+                        <span className="text-slate-400">Precio Actual:</span>
                         <span className="font-mono font-bold text-emerald-400">
-                          $ {(sub.precioActual || sub.precioBase).toLocaleString('es-AR')}
+                          $ {(subasta.precioActual || subasta.precioBase).toLocaleString('es-AR')}
                         </span>
                       </div>
 
@@ -349,16 +370,14 @@ export const ActivitiesPage: React.FC = () => {
                         <div className="flex items-center gap-1 text-[11px] font-mono text-slate-400">
                           <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                           <span>
-                            {esActiva
-                              ? calcularTiempoRestante(sub.fechaFin)
-                              : esDesierta
-                              ? 'Cerrada (Desierta)'
-                              : 'Cerrada (Adjudicada)'}
+                            {activa 
+                              ? calcularTiempoRestante(subasta.fechaFin) 
+                              : `Cerró ${new Date(parsearFechaUtc(subasta.fechaFin)).toLocaleDateString('es-AR')}`}
                           </span>
                         </div>
 
                         <button
-                          onClick={() => navigate(`/subastas/${sub.id}`)}
+                          onClick={() => navigate(`/subastas/${subasta.id}`)}
                           className="flex items-center gap-1 text-xs font-semibold text-blue-400 hover:text-blue-300 transition cursor-pointer"
                         >
                           Ver Sala <ExternalLink className="w-3 h-3" />
@@ -376,6 +395,47 @@ export const ActivitiesPage: React.FC = () => {
       {/* PESTAÑA 2: MIS OFERTAS / COMPRAS (ROL COMPRADOR) */}
       {tabActiva === 'pujas' && (
         <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">Garantías Activas (Escrow)</span>
+                <span className="text-xl font-bold font-mono text-amber-400 mt-1 block">
+                  $ {misOfertas
+                    .filter(o => o.estadoPuja === 'GANANDO')
+                    .reduce((sum, o) => sum + o.montoMayorPuja, 0)
+                    .toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl">
+                <Gavel className="w-6 h-6" />
+              </div>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">Subastas Ganadas</span>
+                <span className="text-xl font-bold font-mono text-emerald-400 mt-1 block">
+                  {misOfertas.filter(o => o.estadoPuja === 'GANADA').length} {misOfertas.filter(o => o.estadoPuja === 'GANADA').length === 1 ? 'artículo' : 'artículos'}
+                </span>
+              </div>
+              <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                <Trophy className="w-6 h-6" />
+              </div>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">En Competencia</span>
+                <span className="text-xl font-bold font-mono text-blue-400 mt-1 block">
+                  {misOfertas.filter(o => estaVigente(o.subasta)).length} {misOfertas.filter(o => estaVigente(o.subasta)).length === 1 ? 'subasta' : 'subastas'}
+                </span>
+              </div>
+              <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+            </div>
+          </div>
+
           {cargando && misOfertas.length === 0 ? (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
               Consultando tus ofertas...
@@ -418,7 +478,7 @@ export const ActivitiesPage: React.FC = () => {
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
-                          Tu Puja Máxima: <strong className="text-amber-400 font-mono">${montoMayorPuja.toLocaleString('es-AR')}</strong>
+                          Tu Oferta: <strong className="text-amber-400 font-mono">${montoMayorPuja.toLocaleString('es-AR')}</strong>
                         </span>
 
                         {estadoPuja === 'GANANDO' && (
@@ -427,7 +487,7 @@ export const ActivitiesPage: React.FC = () => {
                           </span>
                         )}
                         {estadoPuja === 'SUPERADO' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30 flex items-center gap-1 shrink-0">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/40 flex items-center gap-1 shrink-0">
                             <AlertTriangle className="w-3 h-3" /> SUPERADO
                           </span>
                         )}
@@ -438,7 +498,7 @@ export const ActivitiesPage: React.FC = () => {
                         )}
                         {estadoPuja === 'NO_ADJUDICADA' && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
-                            NO GANADA
+                            NO ADJUDICADA
                           </span>
                         )}
                       </div>
@@ -458,9 +518,7 @@ export const ActivitiesPage: React.FC = () => {
                           <span>
                             {activaReal
                               ? calcularTiempoRestante(subasta.fechaFin) 
-                              : subasta.cantidadPujas === 0
-                              ? 'Cerrada (Desierta)'
-                              : 'Cerrada'}
+                              : `Finalizó ${new Date(parsearFechaUtc(subasta.fechaFin)).toLocaleDateString('es-AR')}`}
                           </span>
                         </div>
 
@@ -472,7 +530,7 @@ export const ActivitiesPage: React.FC = () => {
                               : 'text-blue-400 hover:text-blue-300'
                           }`}
                         >
-                          {estadoPuja === 'SUPERADO' ? 'Superar Puja' : 'Ver Detalle'} <ExternalLink className="w-3 h-3" />
+                          {estadoPuja === 'SUPERADO' ? 'Superar Puja' : 'Ver Sala'} <ExternalLink className="w-3 h-3" />
                         </button>
                       </div>
                     </div>
@@ -486,3 +544,5 @@ export const ActivitiesPage: React.FC = () => {
     </div>
   );
 };
+
+export default ActivitiesPage;

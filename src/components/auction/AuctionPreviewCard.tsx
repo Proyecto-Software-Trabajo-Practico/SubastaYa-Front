@@ -104,7 +104,7 @@ export const AuctionPreviewCard: React.FC<AuctionPreviewProps> = ({
         <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
           {descripcion.trim() !== ''
             ? descripcion
-            : 'Los detalles, estado y especificaciones técnicas de tu artículo aparecerán aquí para los compradores.'}
+            : 'Detalles, estado y especificaciones de tu artículo.'}
         </p>
       </div>
 

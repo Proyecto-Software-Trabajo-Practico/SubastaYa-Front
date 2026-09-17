@@ -1,3 +1,8 @@
+/*
+  Página de la Billetera Virtual (WalletPage).
+  Corresponde al Módulo de Finanzas del proyecto SubastaYa.
+*/
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { billeteraApi, type TransaccionLedgerDTO } from '../API/billeteraApi';
@@ -32,7 +37,7 @@ export const WalletPage: React.FC = () => {
       setTienePrevia(res.tienePaginaPrevia);
       setTieneSiguiente(res.tienePaginaSiguiente);
     } catch {
-      // Manejo de error si falla la carga
+      // Manejo silencioso de error
     } finally {
       setCargandoTabla(false);
     }
@@ -171,20 +176,20 @@ export const WalletPage: React.FC = () => {
           <button
             onClick={() => handleDepositar(Number(monto))}
             disabled={cargandoDeposito || !monto || Number(monto) <= 0}
-            className="w-full sm:w-auto px-6 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-sm rounded-lg transition whitespace-nowrap"
+            className="w-full sm:w-auto px-6 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-sm rounded-lg transition whitespace-nowrap cursor-pointer"
           >
             {cargandoDeposito ? 'Acreditando...' : 'Acreditar Fondos'}
           </button>
         </div>
 
-        {/* Chips de montos rápidos */}
+        {/* Chips de montos rápidos: solo escriben en el campo de entrada */}
         <div className="flex flex-wrap gap-2 mt-4">
           {[10000, 50000, 100000].map((val) => (
             <button
               key={val}
-              onClick={() => handleDepositar(val)}
-              disabled={cargandoDeposito}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-mono text-slate-300 rounded-md transition"
+              type="button"
+              onClick={() => setMonto(val.toString())}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-mono text-slate-300 rounded-md transition cursor-pointer"
             >
               +$ {val.toLocaleString('es-AR')}
             </button>
@@ -250,7 +255,7 @@ export const WalletPage: React.FC = () => {
             <button
               onClick={() => setPagina((p) => p - 1)}
               disabled={!tienePrevia || cargandoTabla}
-              className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded text-slate-300"
+              className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded text-slate-300 cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" /> Anterior
             </button>
@@ -260,7 +265,7 @@ export const WalletPage: React.FC = () => {
             <button
               onClick={() => setPagina((p) => p + 1)}
               disabled={!tieneSiguiente || cargandoTabla}
-              className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded text-slate-300"
+              className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded text-slate-300 cursor-pointer"
             >
               Siguiente <ChevronRight className="w-4 h-4" />
             </button>
