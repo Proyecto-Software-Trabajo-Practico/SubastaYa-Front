@@ -1,13 +1,6 @@
 /*
   Página principal de creación de subasta: CreateAuctionPage.
   Corresponde al Módulo 2 del proyecto SubastaYa.
-  
-  Rol Arquitectónico:
-  - Orquesta el estado reactivo del formulario de publicación con persistencia en localStorage.
-  - Coordina la selección de categoría y la subida de imagen local en memoria (Base64).
-  - Delega la comunicación HTTP a subastaApi (principio DIP).
-  - Despliega la tarjeta reactiva de previsualización en vivo (AuctionPreviewCard).
-  - Al completar la creación, despliega el toast verde animado de "¡Publicación Exitosa!".
 */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -30,6 +23,7 @@ import { ApiError } from '../API/httpClient';
 import { AuctionPreviewCard } from '../components/auction/AuctionPreviewCard';
 
 const DRAFT_KEY = 'subasta_form_draft_data';
+const MONTO_MAXIMO_PERMITIDO = 999999999;
 
 export const CreateAuctionPage: React.FC = () => {
   const navigate = useNavigate();
@@ -109,7 +103,7 @@ export const CreateAuctionPage: React.FC = () => {
   }, []);
 
   /*
-    PUNTO 2: Persistencia automática en localStorage ante cambios en los campos.
+    Persistencia automática en localStorage ante cambios en los campos.
   */
   useEffect(() => {
     const draft = {
@@ -139,12 +133,11 @@ export const CreateAuctionPage: React.FC = () => {
   ]);
 
   /*
-    PUNTO 3: Reloj dinámico de 1 minuto para actualizar la fecha de inicio cuando "esInmediata" está activo.
+    Reloj dinámico de 1 minuto para actualizar la fecha de inicio cuando "esInmediata" está activo.
   */
   useEffect(() => {
     if (!esInmediata) return;
 
-    // Actualizar inmediatamente la fecha al seleccionar la opción
     setFechaInicioManual(formatearParaInput(new Date()));
 
     const interval = setInterval(() => {
@@ -164,16 +157,33 @@ export const CreateAuctionPage: React.FC = () => {
   };
 
   /*
-    Manejo de precios e incremento
+    Manejo de precios con tope de $ 999.999.999
   */
-  const handlePrecioBaseChange = (valor: number | '') => {
-    setPrecioBase(valor);
+  const handlePrecioBaseChange = (valorRaw: string) => {
+    if (valorRaw === '') {
+      setPrecioBase('');
+      return;
+    }
+    const val = Number(valorRaw);
+    if (val > MONTO_MAXIMO_PERMITIDO) return;
+    setPrecioBase(val);
+  };
+
+  const handleIncrementoChange = (valorRaw: string) => {
+    if (valorRaw === '') {
+      setIncrementoMinimo('');
+      return;
+    }
+    const val = Number(valorRaw);
+    if (val > MONTO_MAXIMO_PERMITIDO) return;
+    setIncrementoMinimo(val);
   };
 
   const calcularPorcentaje = (porc: number): number => {
     const base = Number(precioBase) || 0;
     if (base <= 0) return 0;
-    return Math.max(1, Math.round(base * (porc / 100)));
+    const calculado = Math.max(1, Math.round(base * (porc / 100)));
+    return Math.min(calculado, MONTO_MAXIMO_PERMITIDO);
   };
 
   const aplicarPorcentaje = (porc: number) => {
@@ -259,13 +269,21 @@ export const CreateAuctionPage: React.FC = () => {
       setErrorGeneral('El precio base debe ser un importe mayor a cero.');
       return;
     }
+    if (numPrecio > MONTO_MAXIMO_PERMITIDO) {
+      setErrorGeneral('El precio base no puede superar los $ 999.999.999.');
+      return;
+    }
+
     const numIncremento = Number(incrementoMinimo);
     if (!numIncremento || numIncremento <= 0) {
       setErrorGeneral('El incremento mínimo debe ser un importe mayor a cero.');
       return;
     }
+    if (numIncremento > MONTO_MAXIMO_PERMITIDO) {
+      setErrorGeneral('El incremento mínimo no puede superar los $ 999.999.999.');
+      return;
+    }
 
-    // PUNTO 4: Validación de Fechas con error focalizado
     const fechaInicioDate = esInmediata ? new Date() : new Date(fechaInicioManual);
     const fechaFinDate = new Date(fechaFinManual);
 
@@ -278,7 +296,7 @@ export const CreateAuctionPage: React.FC = () => {
       return;
     }
     if (fechaFinDate <= fechaInicioDate) {
-      setErrorFechas('La fecha de finalización debe ser estrictamente posterior a la fecha de inicio.');
+      setErrorFechas('La fecha de finalización debe ser strictly posterior a la fecha de inicio.');
       return;
     }
 
@@ -325,7 +343,6 @@ export const CreateAuctionPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Botón de Limpiar Borrador Persistido */}
         <button
           type="button"
           onClick={handleLimpiarBorrador}
@@ -428,20 +445,20 @@ export const CreateAuctionPage: React.FC = () => {
                   <input
                     type="number"
                     min="1"
-                    step="any"
+                    max={MONTO_MAXIMO_PERMITIDO}
                     placeholder="50000"
                     value={precioBase}
-                    onChange={(e) => handlePrecioBaseChange(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) => handlePrecioBaseChange(e.target.value)}
                     required
                     className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl pl-8 pr-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 transition-colors"
                   />
                 </div>
                 {Number(precioBase) > 0 ? (
-                  <span className="text-[11px] font-mono text-emerald-400 font-semibold block">
+                  <span className="text-[11px] font-mono text-emerald-400 font-semibold block truncate">
                     Equivale a: $ {Number(precioBase).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                   </span>
                 ) : (
-                  <span className="text-[11px] text-slate-500 block">Importe mínimo para abrir la puja.</span>
+                  <span className="text-[11px] text-slate-500 block">Importe máximo: $ 999.999.999</span>
                 )}
               </div>
 
@@ -454,20 +471,20 @@ export const CreateAuctionPage: React.FC = () => {
                   <input
                     type="number"
                     min="1"
-                    step="any"
+                    max={MONTO_MAXIMO_PERMITIDO}
                     placeholder="5000"
                     value={incrementoMinimo}
-                    onChange={(e) => setIncrementoMinimo(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) => handleIncrementoChange(e.target.value)}
                     required
                     className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 transition-colors"
                   />
                 </div>
                 {Number(incrementoMinimo) > 0 ? (
-                  <span className="text-[11px] font-mono text-blue-400 font-semibold block">
+                  <span className="text-[11px] font-mono text-blue-400 font-semibold block truncate">
                     Equivale a: +$ {Number(incrementoMinimo).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                   </span>
                 ) : (
-                  <span className="text-[11px] text-slate-500 block">Diferencia mínima entre cada puja consecutiva.</span>
+                  <span className="text-[11px] text-slate-500 block">Importe máximo: $ 999.999.999</span>
                 )}
               </div>
             </div>
@@ -526,7 +543,6 @@ export const CreateAuctionPage: React.FC = () => {
               </div>
             </label>
 
-            {/* PUNTO 4: Cartel de Error Focalizado para Fechas */}
             {errorFechas && (
               <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 flex items-center gap-2.5 text-rose-400 text-xs font-medium">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -693,7 +709,7 @@ export const CreateAuctionPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ================= MODAL / TOAST VERDE DE ÉXITO ================= */}
+      {/* ================= MODAL DE ÉXITO ================= */}
       {subastaCreadaId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
           <div className="relative w-full max-w-lg bg-slate-900 border-2 border-emerald-500/80 rounded-3xl p-8 text-center space-y-6 shadow-2xl shadow-emerald-500/20 transform animate-in zoom-in-95 duration-300">
@@ -730,13 +746,13 @@ export const CreateAuctionPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => navigate('/catalogo')}
-                  className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-colors"
+                  className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-colors cursor-pointer"
                 >
                   Ver en Catálogo
                 </button>
                 <button
                   onClick={() => navigate('/actividades')}
-                  className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-colors"
+                  className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-colors cursor-pointer"
                 >
                   Mis Publicaciones
                 </button>
