@@ -142,12 +142,9 @@ export const ActivitiesPage: React.FC = () => {
     let montado = true;
 
     if (montado && usuarioActual?.id) {
-      const cachePubs = sessionStorage.getItem(CACHE_PUBS_KEY);
-      const cacheOfertas = sessionStorage.getItem(CACHE_OFERTAS_KEY);
-
-      if (!cachePubs || !cacheOfertas) {
+      
         cargarDatos();
-      }
+      
     }
 
     return () => {

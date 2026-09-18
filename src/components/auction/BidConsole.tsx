@@ -54,8 +54,8 @@ export const BidConsole: React.FC<BidConsoleProps> = ({
   const calcularAtajo = (porcentaje: number) => {
     if (finalizada || esLider || esVendedor) return;
 
-    // Calcula el porcentaje sobre el precio actual redondeado a miles
-    const aumentoPorcentual = Math.round((precioActual * porcentaje) / 1000) * 1000;
+    // Calcula el incremento porcentual sobre el precio actual redondeado al entero más próximo
+    const aumentoPorcentual = Math.round(precioActual * porcentaje);
     // Nos aseguramos de que el aumento sea como mínimo el incremento obligatorio
     const aumentoFinal = Math.max(aumentoPorcentual, incrementoMinimo);
     const nuevoTotal = precioActual + aumentoFinal;

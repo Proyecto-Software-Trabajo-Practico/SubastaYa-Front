@@ -6,7 +6,7 @@
   - Columna Derecha: Reloj Digital LED (fondo negro/letras blancas/rojo < 1min) e Historial de Pujas en tiempo real.
 */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { httpClient } from '../API/httpClient';
 import { DigitalCountdown } from '../components/auction/DigitalCountdown';
@@ -59,6 +59,9 @@ export const CatalogPage: React.FC = () => {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [cargando, setCargando] = useState<boolean>(true);
   const [cargandoDetalle, setCargandoDetalle] = useState<boolean>(false);
+
+  // Caché en memoria para transiciones instantáneas (0 ms) sin parpadeos al volver a subastas ya vistas
+  const cacheDetalles = useRef<Record<number, SubastaDetalle>>({});
 
   // Estados para paginación escalable del catálogo (requisito de rendimiento)
   const [pagina, setPagina] = useState<number>(1);
@@ -151,17 +154,25 @@ export const CatalogPage: React.FC = () => {
       return;
     }
 
-    // Limpiamos el detalle de la tarjeta previa para evitar datos residuales durante la carga de red
+    // 1. Si ya se cargó previamente en la sesión, la mostramos al instante sin parpadeos (0 ms)
+    if (cacheDetalles.current[subastaActual.id]) {
+      setDetalleActivo(cacheDetalles.current[subastaActual.id]);
+      setCargandoDetalle(false);
+      return;
+    }
+
+    // Limpiamos el detalle de la tarjeta previa para evitar datos residuales durante la primera carga de red
     setDetalleActivo(null);
 
     const cargarDetalle = async () => {
       setCargandoDetalle(true);
       try {
         const detalle = await httpClient.get<SubastaDetalle>(`/subastas/${subastaActual.id}`);
+        cacheDetalles.current[subastaActual.id] = detalle;
         setDetalleActivo(detalle);
       } catch {
         // Fallback defensivo con los datos que ya tenemos del card
-        setDetalleActivo({
+        const fallback: SubastaDetalle = {
           ...subastaActual,
           descripcion: 'Descripción no disponible.',
           incrementoMinimo: 1000,
@@ -169,7 +180,9 @@ export const CatalogPage: React.FC = () => {
           vendedorId: 1,
           vendedorNombre: 'Vendedor',
           ultimasPujas: [],
-        });
+        };
+        cacheDetalles.current[subastaActual.id] = fallback;
+        setDetalleActivo(fallback);
       } finally {
         setCargandoDetalle(false);
       }
