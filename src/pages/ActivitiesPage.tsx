@@ -1,7 +1,4 @@
-/*
-  Página de Mis Actividades (ActivitiesPage.tsx)
-  Módulo 5 del TP: Cumple estrictamente con RESTful Nivel 2 y alta eficiencia de carga.
-*/
+
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
