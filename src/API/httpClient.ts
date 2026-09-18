@@ -4,7 +4,7 @@
   negociación de contenido JSON (RESTful Nivel 2), inyección de JWT y captura de errores HTTP.
 */
 
-const API_BASE_URL = 'https://localhost:7127/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://localhost:7127/api';
 
 // Clase personalizada para capturar y defender respuestas no exitosas (400, 401, 404, 409, 500)
 export class ApiError extends Error {
@@ -53,8 +53,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
             try {
                 const bodyError = await response.json();
-                // Captura mensajes emitidos por el ExceptionMiddleware del backend
-                mensajeError = bodyError.message || bodyError.mensaje || bodyError.error || mensajeError;
+                // Captura mensajes emitidos por el ExceptionMiddleware del backend (estándar RFC 7807 ProblemDetails)
+                mensajeError = bodyError.detail || bodyError.error || bodyError.message || bodyError.mensaje || mensajeError;
                 detalles = bodyError;
             } catch {
                 // En caso de que la respuesta de error no sea JSON legible
