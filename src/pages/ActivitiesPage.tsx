@@ -1,12 +1,9 @@
 /*
   Página de Mis Actividades (ActivitiesPage.tsx)
-  Módulo 5 del TP: Cumple con los requerimientos exigidos por la cátedra.
-  - Pestaña "Mis Publicaciones": Gestión de publicaciones como vendedor.
-  - Pestaña "Mis Compras / Pujas": Listado completo de subastas donde participó el usuario,
-    indicando si está en competencia (GANANDO / SUPERADO) o si la subasta finalizó (¡GANASTE! / NO ADJUDICADA).
+  Módulo 5 del TP: Cumple estrictamente con RESTful Nivel 2 y alta eficiencia de carga.
 */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   Activity, 
@@ -68,6 +65,8 @@ export const ActivitiesPage: React.FC = () => {
   const { usuarioActual } = useAuth();
   const navigate = useNavigate();
 
+  const cargandoRef = useRef(false);
+
   const [tabActiva, setTabActiva] = useState<'publicaciones' | 'pujas'>('publicaciones');
 
   const [misPublicaciones, setMisPublicaciones] = useState<SubastaCardDto[]>(() => {
@@ -87,98 +86,47 @@ export const ActivitiesPage: React.FC = () => {
   });
 
   const cargarDatos = async (forzarRefresco = false) => {
-    if (!usuarioActual?.id) return;
+    if (!usuarioActual?.id || cargandoRef.current) return;
     
+    cargandoRef.current = true;
     if (forzarRefresco || misPublicaciones.length === 0 || misOfertas.length === 0) {
       setCargando(true);
     }
 
     try {
-      // 1. Cargar Publicaciones del Vendedor
-      const resPubs = await subastaApi.obtenerMisPublicaciones(usuarioActual.id, 1, 50);
+      const [resPubs, resOfertas] = await Promise.all([
+        subastaApi.obtenerMisPublicaciones(usuarioActual.id, 1, 15),
+        subastaApi.obtenerMisOfertas(usuarioActual.id, 1, 20)
+      ]);
+
       const pubsFetched = resPubs.items || [];
       setMisPublicaciones(pubsFetched);
       sessionStorage.setItem(CACHE_PUBS_KEY, JSON.stringify(pubsFetched));
 
-      // 2. Consulta Paginada y Acotada (ACTIVAS + FINALIZADAS)
-      // Se utiliza un tamaño de página de 10/15 para acotar el tamaño del JSON de respuesta.
-      const [resActivas, resFinalizadas] = await Promise.all([
-        subastaApi.obtenerCatalogoGeneral(1, 15, 'ACTIVA').catch(() => ({ items: [] })),
-        subastaApi.obtenerCatalogoGeneral(1, 15, 'FINALIZADA').catch(() => ({ items: [] }))
-      ]);
+      const subastasOfertadas = resOfertas.items || [];
+      
+    const itemsComprador: OfertaCompradorItem[] = subastasOfertadas.map((item) => {
+    const activaReal = estaVigente(item);
+    
+    // ⚡ Evaluación estricta
+    const esGanador = item.compradorGanadorId !== undefined && item.compradorGanadorId !== null
+      ? String(item.compradorGanadorId) === String(usuarioActual.id)
+      : false;
 
-      const catalogoItems = [
-        ...(resActivas.items || []),
-        ...(resFinalizadas.items || [])
-      ];
+    let estadoPuja: 'GANANDO' | 'SUPERADO' | 'GANADA' | 'NO_ADJUDICADA';
 
-      // 3. Rehidratación con localStorage para asegurar la presencia de subastas históricas
-      const idsLocales: number[] = JSON.parse(localStorage.getItem('mis_subastas_ofertadas') || '[]');
-      const idsCatalogoConPujas = catalogoItems.filter(item => item.cantidadPujas > 0).map(i => i.id);
+    if (activaReal) {
+      estadoPuja = esGanador ? 'GANANDO' : 'SUPERADO';
+    } else {
+      estadoPuja = esGanador ? 'GANADA' : 'NO_ADJUDICADA';
+    }
 
-      const todosLosIds = Array.from(new Set([...idsCatalogoConPujas, ...idsLocales]));
-
-      // 4. Obtener detalle de las subastas en las que participó el usuario
-      const detallesPromises = todosLosIds.map(id =>
-        subastaApi.obtenerDetalleSubasta(id).catch(() => null)
-      );
-
-      const detallesResult: any[] = await Promise.all(detallesPromises);
-
-      // 5. Mapear resultados clasificando según estado (GANANDO, SUPERADO, GANADA, NO_ADJUDICADA)
-      const itemsComprador: OfertaCompradorItem[] = [];
-
-      detallesResult.forEach((detalle) => {
-        if (!detalle) return;
-
-        const listaPujas: any[] = detalle.ultimasPujas || detalle.pujas || [];
-        if (listaPujas.length === 0) return;
-
-        const item: SubastaCardDto = {
-          id: detalle.id,
-          titulo: detalle.titulo,
-          precioBase: detalle.precioBase,
-          precioActual: detalle.precioActual,
-          cantidadPujas: detalle.cantidadPujas || listaPujas.length,
-          fechaFin: detalle.fechaFin,
-          estado: detalle.estado,
-          urlImagen: detalle.urlImagen,
-          categoriaId: detalle.categoriaId || 0,
-          categoriaNombre: detalle.categoriaNombre
-        };
-
-        const misPujasEnSubasta = listaPujas.filter((p: any) => {
-          const idPujaUsuario = String(p.compradorId ?? p.usuarioId ?? p.comprador?.id ?? '');
-          return idPujaUsuario === String(usuarioActual.id);
-        });
-
-        if (misPujasEnSubasta.length > 0) {
-          const mayorOfertaPropia = Math.max(...misPujasEnSubasta.map((p: any) => Number(p.monto || 0)));
-          
-          const pujaMasAltaGlobal = listaPujas.reduce(
-            (max: any, p: any) => (Number(p.monto) > Number(max.monto) ? p : max), 
-            listaPujas[0]
-          );
-
-          const idLiderGlobal = String(pujaMasAltaGlobal.compradorId ?? pujaMasAltaGlobal.usuarioId ?? '');
-          const esMayorOferenteGlobal = idLiderGlobal === String(usuarioActual.id);
-
-          const activaReal = estaVigente(item);
-          let estadoPuja: 'GANANDO' | 'SUPERADO' | 'GANADA' | 'NO_ADJUDICADA';
-
-          if (activaReal) {
-            estadoPuja = esMayorOferenteGlobal ? 'GANANDO' : 'SUPERADO';
-          } else {
-            estadoPuja = esMayorOferenteGlobal ? 'GANADA' : 'NO_ADJUDICADA';
-          }
-
-          itemsComprador.push({
-            subasta: item,
-            montoMayorPuja: mayorOfertaPropia,
-            estadoPuja
-          });
-        }
-      });
+  return {
+    subasta: item,
+    montoMayorPuja: item.precioActual || item.precioBase,
+    estadoPuja
+  };
+});
 
       setMisOfertas(itemsComprador);
       sessionStorage.setItem(CACHE_OFERTAS_KEY, JSON.stringify(itemsComprador));
@@ -186,16 +134,25 @@ export const ActivitiesPage: React.FC = () => {
       console.error("Error cargando datos de actividades:", err);
     } finally {
       setCargando(false);
+      cargandoRef.current = false;
     }
   };
 
   useEffect(() => {
-    const cachePubs = sessionStorage.getItem(CACHE_PUBS_KEY);
-    const cacheOfertas = sessionStorage.getItem(CACHE_OFERTAS_KEY);
+    let montado = true;
 
-    if (!cachePubs || !cacheOfertas) {
-      cargarDatos();
+    if (montado && usuarioActual?.id) {
+      const cachePubs = sessionStorage.getItem(CACHE_PUBS_KEY);
+      const cacheOfertas = sessionStorage.getItem(CACHE_OFERTAS_KEY);
+
+      if (!cachePubs || !cacheOfertas) {
+        cargarDatos();
+      }
     }
+
+    return () => {
+      montado = false;
+    };
   }, [usuarioActual?.id]);
 
   const recaudacionEnJuego = misPublicaciones
@@ -329,9 +286,16 @@ export const ActivitiesPage: React.FC = () => {
                 const activa = estaVigente(subasta);
                 return (
                   <div key={subasta.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex gap-4 items-center hover:border-slate-700 transition">
-                    <div className="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
+                    <div className="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
                       {subasta.urlImagen ? (
-                        <img src={subasta.urlImagen} alt={subasta.titulo} className="w-full h-full object-cover" />
+                        <img 
+                          src={subasta.urlImagen} 
+                          alt={subasta.titulo} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-600">
                           <Package className="w-8 h-8" />
@@ -465,9 +429,16 @@ export const ActivitiesPage: React.FC = () => {
 
                 return (
                   <div key={subasta.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex gap-4 items-center hover:border-slate-700 transition">
-                    <div className="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0">
+                    <div className="w-20 h-20 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
                       {subasta.urlImagen ? (
-                        <img src={subasta.urlImagen} alt={subasta.titulo} className="w-full h-full object-cover" />
+                        <img 
+                          src={subasta.urlImagen} 
+                          alt={subasta.titulo} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-slate-600">
                           <Package className="w-8 h-8" />

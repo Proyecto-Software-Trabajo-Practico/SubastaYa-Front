@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Radio, Tag, User, Clock } from 'lucide-react';
+import { ArrowLeft, Radio, Tag, User, Clock, Package } from 'lucide-react';
 import { httpClient, ApiError } from '../API/httpClient';
 import { useAuth } from '../context/AuthContext';
 import { useAuctionHub } from '../hooks/useAuctionHub';
@@ -233,15 +233,33 @@ export const LiveAuctionPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <div className="lg:col-span-7 space-y-6">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            {/* Portada / Banner de Imagen de la Sala */}
             <div className="aspect-video w-full bg-slate-950 relative overflow-hidden flex items-center justify-center">
-              <img
-                src={subasta.urlImagen || '/imagenes/auto1.png'}
-                alt={subasta.titulo}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/imagenes/auto1.png';
-                }}
-              />
+              {subasta.urlImagen && subasta.urlImagen.trim() !== '' ? (
+                <img
+                  src={subasta.urlImagen}
+                  alt={subasta.titulo}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    // Si falla la carga de la imagen, oculta el img roto para mostrar el placeholder
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    const fallback = (e.target as HTMLElement).nextElementSibling;
+                    if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                  }}
+                />
+              ) : null}
+
+              {/* Placeholder si no hay imagen o falla la carga */}
+              <div
+                className="flex-col items-center justify-center gap-3 text-slate-600"
+                style={{ display: (!subasta.urlImagen || subasta.urlImagen.trim() === '') ? 'flex' : 'none' }}
+              >
+                <Package className="w-16 h-16 text-slate-700" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Sin imagen disponible
+                </span>
+              </div>
+
               <div className="absolute top-3 left-3 flex gap-2">
                 <span className="px-3 py-1 bg-slate-950/80 backdrop-blur-md border border-slate-700 rounded-full text-xs font-bold text-slate-200 flex items-center gap-1">
                   <Tag className="w-3 h-3 text-blue-400" />
@@ -305,3 +323,5 @@ export const LiveAuctionPage: React.FC = () => {
     </div>
   );
 };
+
+export default LiveAuctionPage;
