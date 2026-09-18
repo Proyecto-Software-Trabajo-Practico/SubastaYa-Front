@@ -1,13 +1,4 @@
-/*
-  Componente de Reloj Digital LED (DigitalCountdown.tsx).
-  Responsabilidad Única (SRP):
-  - Calcula la cuenta regresiva en segundos a partir de FechaFin (si es ACTIVA) 
-    o FechaInicio (si es PROGRAMADA).
-  - Renderizado estilo display LED: fondo negro con números blancos en una sola fila.
-  - Regla de Negocio Anti-Sniping: si resta menos de 1 minuto (< 60s) en una subasta ACTIVA, 
-    las letras cambian a rojo parpadeante (alerta visual de zona crítica).
-  - Notifica a través de onFinalizada cuando el tiempo llega a cero para transición reactiva.
-*/
+
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Clock } from 'lucide-react';
@@ -39,20 +30,14 @@ export const DigitalCountdown: React.FC<DigitalCountdownProps> = ({
   }, [fechaFin, fechaInicio, estado]);
 
   useEffect(() => {
-    // Si la subasta ya viene marcada como FINALIZADA desde el backend, no calculamos cuenta regresiva
     if (estado === 'FINALIZADA') {
       setTiempoRestanteMs(0);
       setEsFinalizada(true);
       return;
     }
 
-    /*
-      Determinación de la fecha objetivo:
-      - Si la subasta es PROGRAMADA, el objetivo es 'fechaInicio' (cuenta regresiva para su apertura).
-      - Si la subasta es ACTIVA, el objetivo es 'fechaFin' (cuenta regresiva para el cierre del remate).
-    */
+    
     if (estado === 'PROGRAMADA' && !fechaInicio) {
-      // Mientras carga el detalle, evitamos cálculos con fechas residuales o indefinidas
       return;
     }
 
@@ -108,23 +93,23 @@ export const DigitalCountdown: React.FC<DigitalCountdownProps> = ({
     return () => clearInterval(intervalo);
   }, [fechaFin, fechaInicio, estado, onFinalizada, onIniciada]);
 
-  // Conversión matemática de milisegundos a Días, Horas, Minutos y Segundos
+  // Conversión matemática de milisegundos
   const totalSegundos = Math.floor(tiempoRestanteMs / 1000);
   const dias = Math.floor(totalSegundos / 86400);
   const horas = Math.floor((totalSegundos % 86400) / 3600);
   const minutos = Math.floor((totalSegundos % 3600) / 60);
   const segundos = totalSegundos % 60;
 
-  // Formato digital con dos dígitos con ceros a la izquierda (ej. 02)
+  // Formato digital con dos dígitos con ceros a la izquierda 
   const formatearDosDigitos = (valor: number) => String(valor).padStart(2, '0');
 
-  // Formato solicitado: "02 D 23 h 25 m 15 s"
+  
   const textoTiempo =
     esFinalizada || estado === 'FINALIZADA'
       ? '00 D 00 h 00 m 00 s'
       : `${formatearDosDigitos(dias)} D ${formatearDosDigitos(horas)} h ${formatearDosDigitos(minutos)} m ${formatearDosDigitos(segundos)} s`;
 
-  // Regla solicitada: Zona crítica cuando resta menos de 1 minuto (< 60 segundos) solo en subastas ACTIVAS
+ 
   const esZonaCritica = estado === 'ACTIVA' && !esFinalizada && totalSegundos < 60;
 
   // Etiqueta contextual según el ciclo de vida de la subasta

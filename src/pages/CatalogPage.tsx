@@ -1,10 +1,4 @@
-/*
-  Página principal del Catálogo de Subastas (CatalogPage.tsx).
-  Implementa el diseño estilo "Spotlight en Vivo" propuesto en draw.io:
-  - Columna Izquierda: Filtros dinámicos con chips descartables y caja de Descripción técnica.
-  - Columna Central: Carrusel interactivo para recorrer subastas con botón "PUJAR!" hacia la Sala en Vivo.
-  - Columna Derecha: Reloj Digital LED (fondo negro/letras blancas/rojo < 1min) e Historial de Pujas en tiempo real.
-*/
+
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -52,7 +46,6 @@ interface ResultadoPaginado<T> {
 export const CatalogPage: React.FC = () => {
   const navigate = useNavigate();
 
-  // Estados de catálogo y filtros
   const [subastas, setSubastas] = useState<SubastaCard[]>([]);
   const [indiceActual, setIndiceActual] = useState<number>(0);
   const [detalleActivo, setDetalleActivo] = useState<SubastaDetalle | null>(null);
@@ -60,7 +53,6 @@ export const CatalogPage: React.FC = () => {
   const [cargando, setCargando] = useState<boolean>(true);
   const [cargandoDetalle, setCargandoDetalle] = useState<boolean>(false);
 
-  // Caché en memoria para transiciones instantáneas (0 ms) sin parpadeos al volver a subastas ya vistas
   const cacheDetalles = useRef<Record<number, SubastaDetalle>>({});
 
   // Estados para paginación escalable del catálogo (requisito de rendimiento)
@@ -144,17 +136,16 @@ export const CatalogPage: React.FC = () => {
   // Subasta actual visible en el carrusel
   const subastaActual = subastas[indiceActual] || null;
 
-  // Posición absoluta en el catálogo global (ej. subasta 21 de 22, o 350 de 2000)
+  // Posición absoluta en el catálogo global 
   const posicionGlobal = totalItems > 0 ? (pagina - 1) * TAMANO_PAGINA + indiceActual + 1 : 0;
 
-  // Cada vez que cambia la subasta seleccionada en el carrusel, cargamos su detalle (GET /api/subastas/{id})
   useEffect(() => {
     if (!subastaActual) {
       setDetalleActivo(null);
       return;
     }
 
-    // 1. Si ya se cargó previamente en la sesión, la mostramos al instante sin parpadeos (0 ms)
+    // Si ya se cargó previamente en la sesión, la mostramos al instante sin parpadeos 
     if (cacheDetalles.current[subastaActual.id]) {
       setDetalleActivo(cacheDetalles.current[subastaActual.id]);
       setCargandoDetalle(false);
@@ -191,14 +182,7 @@ export const CatalogPage: React.FC = () => {
     cargarDetalle();
   }, [subastaActual?.id]);
 
-  /*
-    Transición reactiva cuando el reloj llega a cero:
-    - Si el usuario filtra específicamente por 'ACTIVA', expulsa la subasta de la lista
-      para mantener la consistencia con el filtro aplicado.
-    - Actualiza inmediatamente el estado en memoria de la subasta a 'FINALIZADA'
-      para que el badge de estado, el botón de acción y la descripción cambien de inmediato.
-    - Si no es demo, consulta al backend para traer la liquidación final consolidada por el Worker.
-  */
+  
   const handleSubastaFinalizada = () => {
     if (!subastaActual || subastaActual.estado === 'FINALIZADA') return;
 
@@ -234,14 +218,7 @@ export const CatalogPage: React.FC = () => {
       });
   };
 
-  /*
-    Transición reactiva cuando la cuenta regresiva de apertura llega a cero:
-    - Si el usuario filtra específicamente por 'PROGRAMADA', expulsa la subasta de la lista
-      para mantener la consistencia con el filtro aplicado.
-    - Pasa el estado de 'PROGRAMADA' a 'ACTIVA' en tiempo real.
-    - Habilita de inmediato el botón '¡PUJAR!' y cambia el badge a verde.
-    - El reloj automáticamente comienza a descontar el tiempo restante hasta fechaFin.
-  */
+
   const handleSubastaIniciada = () => {
     if (!subastaActual || subastaActual.estado !== 'PROGRAMADA') return;
 
@@ -283,7 +260,7 @@ export const CatalogPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Contenedor Principal estilo Draw.io (Azul profundo con marco elegante) */}
+      {/*  */}
       <div className="bg-gradient-to-br from-blue-950/70 via-slate-900 to-slate-950 border-2 border-blue-900/50 rounded-3xl p-6 sm:p-8 shadow-2xl">
         
         {cargando ? (
@@ -392,9 +369,7 @@ export const CatalogPage: React.FC = () => {
               </div>
             </div>
 
-            {/* ============================================================ */}
             {/* COLUMNA CENTRAL: Carrusel Showcase + Botón PUJAR!            */}
-            {/* ============================================================ */}
             <div className="lg:col-span-6 flex flex-col items-center justify-between space-y-5">
               
               {/* Encabezado del artículo en carrusel */}
@@ -458,7 +433,7 @@ export const CatalogPage: React.FC = () => {
                   <ChevronRight className="w-6 h-6" />
                 </button>
 
-                {/* Indicadores circulares (Puntos o o o) */}
+                {/* Indicadores circulares  */}
                 <div className="flex items-center gap-2 mt-4">
                   {subastas.slice(0, 10).map((_, idx) => (
                     <button
@@ -533,9 +508,7 @@ export const CatalogPage: React.FC = () => {
 
             </div>
 
-            {/* ============================================================ */}
             {/* COLUMNA DERECHA: Reloj Digital LED + Historial de Pujas      */}
-            {/* ============================================================ */}
             <div className="lg:col-span-3 flex flex-col gap-5 h-full">
               
               {/* Reloj LED (Fondo negro / Letras blancas / Rojas < 1 min) */}

@@ -1,7 +1,4 @@
-/*
-  Página principal de creación de subasta: CreateAuctionPage.
-  Corresponde al Módulo 2 del proyecto SubastaYa.
-*/
+
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
