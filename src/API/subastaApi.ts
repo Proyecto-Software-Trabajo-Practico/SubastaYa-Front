@@ -30,15 +30,15 @@ export interface SubastaCreadaRespuestaDto {
 export interface SubastaCardDto {
   id: number;
   titulo: string;
-  urlImagen?: string | null;
-  estado: 'PROGRAMADA' | 'ACTIVA' | 'FINALIZADA' | 'CANCELADA';
+  urlImagen?: string;
+  estado: string;
   precioBase: number;
   precioActual: number;
   cantidadPujas: number;
   fechaFin: string;
   categoriaId: number;
-  categoriaNombre?: string;
-  ganadorId?: number | null;
+  categoriaNombre: string;
+  compradorGanadorId?: number;
 }
 
 export interface ResultadoPaginadoDto<T> {
@@ -79,13 +79,17 @@ export const subastaApi = {
     return await httpClient.get<CategoriaDto[]>('/categorias');
   },
 
-  obtenerMisPublicaciones: async (
-    vendedorId: number,
-    pagina: number = 1,
-    tamanoPagina: number = 50
-  ): Promise<ResultadoPaginadoDto<SubastaCardDto>> => {
+  // Mis Publicaciones (Rol Vendedor) -> GET /api/usuarios/{vendedorId}/subastas
+  obtenerMisPublicaciones: async (vendedorId: number, pagina = 1, tamanoPagina = 10) => {
     return await httpClient.get<ResultadoPaginadoDto<SubastaCardDto>>(
-      `/subastas?vendedorId=${vendedorId}&pagina=${pagina}&tamanoPagina=${tamanoPagina}`
+      `/usuarios/${vendedorId}/subastas?pagina=${pagina}&tamanoPagina=${tamanoPagina}`
+    );
+  },
+
+  // Mis Ofertas (Rol Comprador) -> GET /api/usuarios/{compradorId}/ofertas
+  obtenerMisOfertas: async (compradorId: number, pagina = 1, tamanoPagina = 15) => {
+    return await httpClient.get<ResultadoPaginadoDto<SubastaCardDto>>(
+      `/usuarios/${compradorId}/ofertas?pagina=${pagina}&tamanoPagina=${tamanoPagina}`
     );
   },
 
